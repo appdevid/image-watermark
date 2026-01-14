@@ -182,7 +182,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
         // 🔒 SCALABLE FONT SIZE (PROPORSIONAL)
         // const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1); // scale relatif
-        const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1) * 2; // naikkan 20%
+        const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1) * 1.2; // naikkan 20%
 
         const timeSize = Math.max(Math.round(96 * scale), 12);
         const dateSize = Math.max(Math.round(36 * scale), 10);
@@ -211,8 +211,8 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         const rectHeight = Math.round(120 * scale);
 
         const watermarkSVG = `
-            <svg width="100%" height="35%"
-                viewBox="0 0 1200 400"
+            <svg width="100%" height="350"
+                viewBox="0 0 1200 350"
                 preserveAspectRatio="none"
                 xmlns="http://www.w3.org/2000/svg">
 
@@ -243,11 +243,11 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         ).join('')}
             </text>
 
-            <text x="40" y="${200 + addressLines.length * (metaSize + 6)}" class="meta">
+            <text x="40" y="${200 + addressLines.length * (metaSize + 8)}" class="meta">
             ${req.body.lat || ''}, ${req.body.lng || ''}
             </text>
 
-            <text x="40" y="${240 + addressLines.length * (metaSize + 6)}" class="meta">
+            <text x="40" y="${246 + addressLines.length * (metaSize + 8)}" class="meta">
             ${req.body.apps || ''}
             </text>
 
@@ -260,7 +260,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         // const wmWidth = Math.round(imageMeta.width * 0.9);
 
         // ✅ WATERMARK SIZE +20%
-        const wmHeight = Math.min(Math.round(imageMeta.height * 0.4 * 1.2), imageMeta.height); // 35% x1.2 = 42% tinggi foto
+        const wmHeight = Math.min(Math.round(imageMeta.height * 0.1 * 2), imageMeta.height); // 35% x1.2 = 42% tinggi foto
         const wmWidth = Math.min(Math.round(imageMeta.width * 0.9 * 1.2), imageMeta.width); // 90% x1.2 = 108% → dibatasi max width foto
 
         const watermarkBuffer = await sharp(Buffer.from(watermarkSVG))
@@ -273,7 +273,6 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             .toBuffer();
 
         // const watermarkBuffer = Buffer.from(watermarkSVG);
-
 
         const watermarked = await sharp(req.file.buffer)
             .rotate()
