@@ -180,16 +180,39 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
         const imageMeta = await sharp(req.file.buffer).metadata();
 
+        // 🔒 SCALABLE FONT SIZE (PROPORSIONAL)
+        // const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1); // scale relatif
+        const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1) * 2; // naikkan 20%
+
+        const timeSize = Math.max(Math.round(96 * scale), 12);
+        const dateSize = Math.max(Math.round(36 * scale), 10);
+        const metaSize = Math.max(Math.round(26 * scale), 8);
+
         // 🔒 FIX FONT SIZE (NO SCALE)
-        const timeSize = 96;
-        const dateSize = 36;
-        const metaSize = 26;
+        // const timeSize = 96;
+        // const dateSize = 36;
+        // const metaSize = 26;
 
         const addressLines = wrapText(req.body.address, 60);
 
+        const baseXTime = 40;   // nilai default
+        const baseXRect = 360;
+        const baseXDate = 386;
+
+        const xTime = Math.round(baseXTime * scale);
+        const xRect = Math.round(baseXRect * scale);
+        const xDate = Math.round(baseXDate * scale);
+
+        const yTime = Math.round(110 * scale);
+        const yDate1 = Math.round(70 * scale);
+        const yDate2 = Math.round(120 * scale);
+
+        const rectWidth = Math.round(6 * scale);
+        const rectHeight = Math.round(120 * scale);
+
         const watermarkSVG = `
-            <svg width="100%" height="320"
-                viewBox="0 0 1200 320"
+            <svg width="100%" height="35%"
+                viewBox="0 0 1200 400"
                 preserveAspectRatio="none"
                 xmlns="http://www.w3.org/2000/svg">
 
@@ -208,11 +231,11 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
             <rect width="1200" height="320" fill="url(#bg)"/>
 
-            <text x="40" y="110" class="time">${time}</text>
-            <rect x="350" y="30" width="6" height="120" fill="#FFC107"/>
+            <text x="${xTime}" y="${yTime}" class="time">${time}</text>
+            <rect x="${xRect}" y="30" width="${rectWidth}" height="${rectHeight}" fill="#FFC107"/>
 
-            <text x="386" y="70" class="date">${date}</text>
-            <text x="386" y="120" class="date">${day}</text>
+            <text x="${xDate}" y="${yDate1}" class="date">${date}</text>
+            <text x="${xDate}" y="${yDate2}" class="date">${day}</text>
 
             <text x="40" y="190" class="meta">
             ${addressLines.map((l, i) =>
@@ -233,19 +256,23 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         const gravity = req.body.gravity || 'southwest';
 
         // ✅ WATERMARK SIZE AMAN
-        const wmHeight = Math.min(320, Math.round(imageMeta.height * 0.35));
-        const wmWidth = imageMeta.width;
+        // const wmHeight = Math.min(320, Math.round(imageMeta.height * 0.35));
+        // const wmWidth = Math.round(imageMeta.width * 0.9);
 
-        // const watermarkBuffer = await sharp(Buffer.from(watermarkSVG))
-        //     .resize({
-        //         width: wmWidth,
-        //         height: wmHeight,
-        //         fit: 'contain',
-        //         background: { r: 0, g: 0, b: 0, alpha: 0 }
-        //     })
-        // .toBuffer();
+        // ✅ WATERMARK SIZE +20%
+        const wmHeight = Math.min(Math.round(imageMeta.height * 0.4 * 1.2), imageMeta.height); // 35% x1.2 = 42% tinggi foto
+        const wmWidth = Math.min(Math.round(imageMeta.width * 0.9 * 1.2), imageMeta.width); // 90% x1.2 = 108% → dibatasi max width foto
 
-        const watermarkBuffer = Buffer.from(watermarkSVG);
+        const watermarkBuffer = await sharp(Buffer.from(watermarkSVG))
+            .resize({
+                width: wmWidth,
+                height: wmHeight,
+                fit: 'inside',
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+            .toBuffer();
+
+        // const watermarkBuffer = Buffer.from(watermarkSVG);
 
 
         const watermarked = await sharp(req.file.buffer)
