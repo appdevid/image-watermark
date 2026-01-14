@@ -132,20 +132,34 @@ async function compressToTarget(buffer, options = {}) {
     return output;
 }
 
+function wrapText(text, maxChars = 50) {
+    const words = text.split(' ');
+    const lines = [];
+    let line = '';
+
+    for (const word of words) {
+        if ((line + word).length > maxChars) {
+            lines.push(line.trim());
+            line = word + ' ';
+        } else {
+            line += word + ' ';
+        }
+    }
+    lines.push(line.trim());
+    return lines;
+}
+
+
 
 // ----- Routes -----
 app.post('/watermark', upload.single('photo'), async (req, res) => {
     try {
-        const datetime = new Date().toLocaleString('en-GB', {
-            timeZone: 'Asia/Jakarta',
-            hour: '2-digit',
-            minute: '2-digit',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
+        if (!req.file) {
+            return res.status(400).json({ error: 'photo is required' });
+        }
 
         const dateObj = new Date();
+
         const time = dateObj.toLocaleTimeString('en-GB', {
             hour: '2-digit',
             minute: '2-digit',
@@ -159,78 +173,97 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             timeZone: 'Asia/Jakarta'
         });
 
-        const day = dateObj.toLocaleDateString('en-US', {
+        const day = dateObj.toLocaleDateString('id-ID', {
             weekday: 'short',
             timeZone: 'Asia/Jakarta'
         });
 
+        const imageMeta = await sharp(req.file.buffer).metadata();
+
+        // 🔒 FIX FONT SIZE (NO SCALE)
+        const timeSize = 96;
+        const dateSize = 36;
+        const metaSize = 26;
+
+        const addressLines = wrapText(req.body.address, 60);
 
         const watermarkSVG = `
-            <svg width="900" height="300" xmlns="http://www.w3.org/2000/svg">
+            <svg width="100%" height="320"
+                viewBox="0 0 1200 320"
+                preserveAspectRatio="none"
+                xmlns="http://www.w3.org/2000/svg">
+
+            <defs>
+            <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#000" stop-opacity="0.15"/>
+                <stop offset="100%" stop-color="#000" stop-opacity="0.55"/>
+            </linearGradient>
+            </defs>
+
             <style>
-                .time {
-                fill: white;
-                font-size: 96px;
-                font-weight: 700;
-                font-family: Arial, Helvetica, sans-serif;
-                }
-                .date {
-                fill: white;
-                font-size: 36px;
-                font-weight: 500;
-                font-family: Arial, Helvetica, sans-serif;
-                }
-                .meta {
-                fill: white;
-                font-size: 26px;
-                opacity: 0.85;
-                font-family: Arial, Helvetica, sans-serif;
-                }
+            .time { fill:white; font-size:${timeSize}px; font-weight:700; font-family:Arial,Helvetica,sans-serif; }
+            .date { fill:white; font-size:${dateSize}px; font-weight:500; font-family:Arial,Helvetica,sans-serif; }
+            .meta { fill:white; font-size:${metaSize}px; opacity:.85; font-family:Arial,Helvetica,sans-serif; }
             </style>
 
-            <!-- background -->
-            <rect x="0" y="0" width="100%" height="100%"
-                    fill="black" fill-opacity="0.35" rx="14"/>
+            <rect width="1200" height="320" fill="url(#bg)"/>
 
-            <!-- TIME -->
             <text x="40" y="110" class="time">${time}</text>
-
-            <!-- separator -->
             <rect x="350" y="30" width="6" height="120" fill="#FFC107"/>
 
-            <!-- DATE -->
             <text x="386" y="70" class="date">${date}</text>
             <text x="386" y="120" class="date">${day}</text>
 
-            <!-- INFO -->
             <text x="40" y="190" class="meta">
-                ${req.body.address}
+            ${addressLines.map((l, i) =>
+            `<tspan x="40" dy="${i === 0 ? 0 : metaSize + 6}">${l}</tspan>`
+        ).join('')}
             </text>
-            <text x="40" y="230" class="meta">
-                ${req.body.lat}, ${req.body.lng}
-            </text>
-            <text x="40" y="270" class="meta">
-                ${req.body.apps}
-            </text>
-            </svg>
-        `;
 
-        const paramGravity = req.body.gravity ?? "southwest";
+            <text x="40" y="${200 + addressLines.length * (metaSize + 6)}" class="meta">
+            ${req.body.lat || ''}, ${req.body.lng || ''}
+            </text>
 
-        // Step 1: watermark
+            <text x="40" y="${240 + addressLines.length * (metaSize + 6)}" class="meta">
+            ${req.body.apps || ''}
+            </text>
+
+            </svg>`;
+
+        const gravity = req.body.gravity || 'southwest';
+
+        // ✅ WATERMARK SIZE AMAN
+        const wmHeight = Math.min(320, Math.round(imageMeta.height * 0.35));
+        const wmWidth = imageMeta.width;
+
+        // const watermarkBuffer = await sharp(Buffer.from(watermarkSVG))
+        //     .resize({
+        //         width: wmWidth,
+        //         height: wmHeight,
+        //         fit: 'contain',
+        //         background: { r: 0, g: 0, b: 0, alpha: 0 }
+        //     })
+        // .toBuffer();
+
+        const watermarkBuffer = Buffer.from(watermarkSVG);
+
+
         const watermarked = await sharp(req.file.buffer)
             .rotate()
-            .composite([{ input: Buffer.from(watermarkSVG), gravity: paramGravity }])
+            .composite([
+                {
+                    input: watermarkBuffer,
+                    gravity
+                }
+            ])
+            .jpeg({ quality: 90 })
             .toBuffer();
 
-        const maxSize = req.body.max_size ?? 500;
-        const maxSizeKb = maxSize * 1024; // 500 KB
+        const maxSizeKb = (req.body.max_size || 500) * 1024;
 
-        // Step 2: compress if needed
         const finalImage = watermarked.length > maxSizeKb
-            ? await compressToTarget(watermarked, { maxSizeKb })
+            ? await compressToTarget(watermarked, maxSizeKb)
             : watermarked;
-
 
         res.set({
             'Content-Type': 'image/jpeg',
@@ -244,6 +277,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         res.status(500).json({ error: 'Watermark failed' });
     }
 });
+
 
 // health
 app.get("/health", (req, res) => res.json({ ok: true, port: PORT }));

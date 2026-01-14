@@ -29,9 +29,9 @@ POST : http://{IP}:3021/watermark
 ```json
 params : {
     photo: FILE,
-    gravity: northwest,
+    gravity: 'northwest',
     max_size: 500 //kb
-    address: dada,
+    address: 'dada',
     lat: 0.2,
     lng: 12.23,
     apps: TIP SISWA
