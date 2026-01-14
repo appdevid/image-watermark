@@ -108,7 +108,7 @@ async function compressToTarget(buffer, options = {}) {
 
     let output = buffer;
 
-    while (output.length > MAX_SIZE && quality >= 40) {
+    while (output.length > options.maxSizeKb && quality >= 40) {
         const image = sharp(buffer);
         const meta = await image.metadata();
 
@@ -136,44 +136,101 @@ async function compressToTarget(buffer, options = {}) {
 // ----- Routes -----
 app.post('/watermark', upload.single('photo'), async (req, res) => {
     try {
-        const datetime = new Date()
-            .toLocaleString('sv-SE', { timeZone: 'Asia/Jakarta' })
-            .replace('T', ' ');
+        const datetime = new Date().toLocaleString('en-GB', {
+            timeZone: 'Asia/Jakarta',
+            hour: '2-digit',
+            minute: '2-digit',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+
+        const dateObj = new Date();
+        const time = dateObj.toLocaleTimeString('en-GB', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Jakarta'
+        });
+
+        const date = dateObj.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            timeZone: 'Asia/Jakarta'
+        });
+
+        const day = dateObj.toLocaleDateString('en-US', {
+            weekday: 'short',
+            timeZone: 'Asia/Jakarta'
+        });
+
 
         const watermarkSVG = `
-            <svg width="900" height="220">
+            <svg width="900" height="300" xmlns="http://www.w3.org/2000/svg">
             <style>
-                .wm {
+                .time {
                 fill: white;
-                fill-opacity: 0.55;
-                font-size: 28px;
+                font-size: 96px;
+                font-weight: 700;
+                font-family: Arial, Helvetica, sans-serif;
+                }
+                .date {
+                fill: white;
+                font-size: 36px;
+                font-weight: 500;
+                font-family: Arial, Helvetica, sans-serif;
+                }
+                .meta {
+                fill: white;
+                font-size: 26px;
+                opacity: 0.85;
                 font-family: Arial, Helvetica, sans-serif;
                 }
             </style>
 
+            <!-- background -->
             <rect x="0" y="0" width="100%" height="100%"
-                    fill="black" fill-opacity="0.25"/>
+                    fill="black" fill-opacity="0.35" rx="14"/>
 
-            <text x="98%" y="40" text-anchor="end" class="wm">ABC Apps</text>
-            <text x="98%" y="80" text-anchor="end" class="wm">
-                Jl Dipait Unus No 23, Tangerang, Banten 10254
+            <!-- TIME -->
+            <text x="40" y="110" class="time">${time}</text>
+
+            <!-- separator -->
+            <rect x="350" y="30" width="6" height="120" fill="#FFC107"/>
+
+            <!-- DATE -->
+            <text x="386" y="70" class="date">${date}</text>
+            <text x="386" y="120" class="date">${day}</text>
+
+            <!-- INFO -->
+            <text x="40" y="190" class="meta">
+                ${req.body.address}
             </text>
-            <text x="98%" y="120" text-anchor="end" class="wm">
+            <text x="40" y="230" class="meta">
                 ${req.body.lat}, ${req.body.lng}
             </text>
-            <text x="98%" y="160" text-anchor="end" class="wm">
-                ${datetime}
+            <text x="40" y="270" class="meta">
+                ${req.body.apps}
             </text>
             </svg>
         `;
 
-        const imageBuffer = await sharp(req.file.buffer)
+        const paramGravity = req.body.gravity ?? "southwest";
+
+        // Step 1: watermark
+        const watermarked = await sharp(req.file.buffer)
             .rotate()
-            .composite([
-                { input: Buffer.from(watermarkSVG), gravity: 'southeast' }
-            ])
-            .jpeg({ quality: 85 })
+            .composite([{ input: Buffer.from(watermarkSVG), gravity: paramGravity }])
             .toBuffer();
+
+        const maxSize = req.body.max_size ?? 500;
+        const maxSizeKb = maxSize * 1024; // 500 KB
+
+        // Step 2: compress if needed
+        const finalImage = watermarked.length > maxSizeKb
+            ? await compressToTarget(watermarked, { maxSizeKb })
+            : watermarked;
+
 
         res.set({
             'Content-Type': 'image/jpeg',
@@ -181,7 +238,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             'Cache-Control': 'no-store'
         });
 
-        res.send(imageBuffer);
+        res.send(finalImage);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Watermark failed' });
