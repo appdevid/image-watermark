@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  watermark-api:
+    container_name: watermark-api
+    ports:
+      - "3021:3021"
+    volumes:
+      - ./tmp:/tmp
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    command: node server.js

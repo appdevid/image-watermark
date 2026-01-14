@@ -1,0 +1,70 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json     # optional: hapus jika ingin commit lockfile (disarankan commit)
+.pnpm-store/
+
+# Environment files (secrets)
+.env
+.env.*                 # contoh: .env.local, .env.production
+
+# OS & editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Build / output
+dist/
+build/
+.out/
+.tmp/
+tmp/
+output/
+*.pdf                 # optional: jika tidak ingin commit PDF apapun
+.cache/
+
+# Coverage / test
+coverage/
+.nyc_output/
+coverage-final.json
+
+# Misc caches
+.cache/
+.parcel-cache/
+.sass-cache/
+.cache-loader/
+.eslintcache
+/.pnp
+.pnp.js
+
+# Docker
+.Dockerfile.swp
+docker-compose.override.yml
+.dockerignore
+
+# Other
+*.tgz
+*.zip
+*.gz
+*.pem
+.vagrant/
+.idea/
+
+# Optional: ignore local docker volumes or persistent data folders
+/data/
