@@ -174,15 +174,17 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         });
 
         const day = dateObj.toLocaleDateString('id-ID', {
-            weekday: 'short',
+            weekday: 'long',
             timeZone: 'Asia/Jakarta'
         });
 
         const imageMeta = await sharp(req.file.buffer).metadata();
 
         // 🔒 SCALABLE FONT SIZE (PROPORSIONAL)
-        // const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1); // scale relatif
-        const scale = Math.min(imageMeta.width / 1920, imageMeta.height / 1080, 1) * 1.2; // naikkan 20%
+        const shortEdge = Math.min(imageMeta.width, imageMeta.height);
+
+        // 1080 = patokan desain (boleh kamu ganti)
+        const scale = Math.min(shortEdge / 1080, 1) * 1.1;
 
         const timeSize = Math.max(Math.round(96 * scale), 12);
         const dateSize = Math.max(Math.round(36 * scale), 10);
@@ -193,7 +195,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
         // const dateSize = 36;
         // const metaSize = 26;
 
-        const addressLines = wrapText(req.body.address, 60);
+        const addressLines = wrapText(req.body.address, 70);
 
         const baseXTime = 40;   // nilai default
         const baseXRect = 360;
@@ -205,10 +207,10 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
         const yTime = Math.round(110 * scale);
         const yDate1 = Math.round(70 * scale);
-        const yDate2 = Math.round(120 * scale);
+        const yDate2 = Math.round(110 * scale);
 
         const rectWidth = Math.round(6 * scale);
-        const rectHeight = Math.round(120 * scale);
+        const rectHeight = Math.round(90 * scale);
 
         const watermarkSVG = `
             <svg width="100%" height="350"
@@ -229,7 +231,7 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             .meta { fill:white; font-size:${metaSize}px; opacity:.85; font-family:Arial,Helvetica,sans-serif; }
             </style>
 
-            <rect width="1200" height="320" fill="url(#bg)"/>
+            <rect width="100%" height="350" fill="url(#bg)"/>
 
             <text x="${xTime}" y="${yTime}" class="time">${time}</text>
             <rect x="${xRect}" y="30" width="${rectWidth}" height="${rectHeight}" fill="#FFC107"/>
