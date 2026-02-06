@@ -108,7 +108,7 @@ async function compressToTarget(buffer, options = {}) {
 
     let output = buffer;
 
-    while (output.length > options.maxSizeKb && quality >= 40) {
+    while (output.length > options.maxSizeByte && quality >= 20) {
         const image = sharp(buffer);
         const meta = await image.metadata();
 
@@ -287,10 +287,11 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             .jpeg({ quality: 90 })
             .toBuffer();
 
-        const maxSizeKb = (req.body.max_size || 500) * 1024;
+        // req.body.max_size in KB, default 500KB
+        const maxSizeByte = (req.body.max_size || 500) * 1024;
 
-        const finalImage = watermarked.length > maxSizeKb
-            ? await compressToTarget(watermarked, maxSizeKb)
+        const finalImage = watermarked.length > maxSizeByte
+            ? await compressToTarget(watermarked, { maxSizeByte })
             : watermarked;
 
         res.set({
