@@ -30,25 +30,23 @@ const BASIC_PASS = process.env.BASIC_AUTH_PASS || "password";
 // ALLOWED_IPS can be "*" or comma separated list of exact IPs or prefixes (e.g. "10.0.,192.168.1.,1.2.3.4")
 const ALLOWED_IPS = (process.env.ALLOWED_IPS || "*").split(",").map(s => s.trim()).filter(Boolean);
 
+console.log(`BASIC_USER ${BASIC_USER}`);
+console.log(`BASIC_PASS ${BASIC_PASS}`);
+
 // ----- Helpers -----
 function getClientIp(req) {
-    // Try X-Forwarded-For first (may contain comma list)
     const xff = req.headers['x-forwarded-for'];
     if (xff) {
-        // take first IP in list
         const first = xff.split(",")[0].trim();
         return normalizeIp(first);
     }
-    // fallback to connection remote address
     const remote = req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : null;
     return normalizeIp(remote);
 }
 
 function normalizeIp(ip) {
     if (!ip) return "";
-    // strip IPv6 mapped IPv4 prefix if present
     if (ip.startsWith("::ffff:")) return ip.substring(7);
-    // strip IPv6 zone id if present
     const percent = ip.indexOf("%");
     if (percent !== -1) ip = ip.substring(0, percent);
     return ip;
@@ -59,15 +57,12 @@ function ipAllowed(ip) {
     if (ALLOWED_IPS.length === 1 && ALLOWED_IPS[0] === "*") return true;
     for (const rule of ALLOWED_IPS) {
         if (rule === "*") return true;
-        // exact match
         if (rule === ip) return true;
-        // allow prefix match (simple subnet style), e.g. "192.168.1." allows "192.168.1.5"
         if (rule.endsWith(".") && ip.startsWith(rule)) return true;
     }
     return false;
 }
 
-// Basic auth middleware
 function basicAuth(req, res, next) {
     const auth = req.headers['authorization'];
     if (!auth || !auth.startsWith('Basic ')) {
@@ -82,7 +77,6 @@ function basicAuth(req, res, next) {
     return res.status(401).send('Invalid credentials');
 }
 
-// IP allowlist middleware
 function ipAllowlist(req, res, next) {
     const clientIp = getClientIp(req);
     if (!ipAllowed(clientIp)) {
@@ -92,9 +86,7 @@ function ipAllowlist(req, res, next) {
     return next();
 }
 
-// Apply security middlewares to all routes
 app.use((req, res, next) => {
-    // log brief info
     console.log(`${new Date().toISOString()} ${req.method} ${req.path} from ${getClientIp(req)}`);
     next();
 });
@@ -116,7 +108,7 @@ async function compressToTarget(buffer, options = {}) {
             width = meta.width;
         }
 
-        width = Math.round(width * 0.9); // resize bertahap (90%)
+        width = Math.round(width * 0.9);
 
         output = await image
             .resize({ width, withoutEnlargement: true })
@@ -150,7 +142,6 @@ function wrapText(text, maxChars = 50) {
 }
 
 
-
 // ----- Routes -----
 app.post('/watermark', upload.single('photo'), async (req, res) => {
     try {
@@ -180,37 +171,41 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
         const imageMeta = await sharp(req.file.buffer).metadata();
 
-        // 🔒 SCALABLE FONT SIZE (PROPORSIONAL)
-        const shortEdge = Math.min(imageMeta.width, imageMeta.height);
+        // ✅ Deteksi orientasi & aspect ratio
+        const isLandscape = imageMeta.width >= imageMeta.height;
+        const aspectRatio = imageMeta.width / imageMeta.height;
 
-        // 1080 = patokan desain (boleh kamu ganti)
-        const scale = Math.min(shortEdge / 1080, 1) * 1.1;
+        // ✅ Scale berdasarkan width
+        const scale = Math.min(imageMeta.width / 1080, 1.5);
 
         const timeSize = Math.max(Math.round(96 * scale), 12);
         const dateSize = Math.max(Math.round(36 * scale), 10);
         const metaSize = Math.max(Math.round(26 * scale), 8);
 
-        // 🔒 FIX FONT SIZE (NO SCALE)
-        // const timeSize = 96;
-        // const dateSize = 36;
-        // const metaSize = 26;
-
         const addressLines = wrapText(req.body.address, 70);
 
-        const baseXTime = 40;   // nilai default
-        const baseXRect = 360;
-        const baseXDate = 386;
+        // ✅ Semua posisi dalam koordinat SVG viewBox (0-1200 x 0-350)
+        // Tidak ikut scale gambar — SVG yang handle scaling saat di-resize
+        const svgXTime = 30;
+        const svgYTime = 130;
 
-        const xTime = Math.round(baseXTime * scale);
-        const xRect = Math.round(baseXRect * scale);
-        const xDate = Math.round(baseXDate * scale);
+        const svgXRect = 410;   // ← geser kanan, setelah "13:50" selesai
+        const svgYRect = 25;
+        const svgRectWidth = 8;
+        const svgRectHeight = 115;
 
-        const yTime = Math.round(110 * scale);
-        const yDate1 = Math.round(70 * scale);
-        const yDate2 = Math.round(110 * scale);
+        const svgXDate = 435;   // ← rect + gap
+        const svgYDate1 = 75;
+        const svgYDate2 = 130;
 
-        const rectWidth = Math.round(6 * scale);
-        const rectHeight = Math.round(90 * scale);
+        const svgXMeta = 30;
+        const svgYMeta = 190;
+        const svgLineHeight = 36;
+
+        // font size dalam SVG viewBox coords (fixed, tidak ikut scale gambar)
+        const svgTimeSize = 110;
+        const svgDateSize = 46;
+        const svgMetaSize = 32;
 
         const watermarkSVG = `
             <svg width="100%" height="350"
@@ -226,30 +221,31 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             </defs>
 
             <style>
-            .time { fill:white; font-size:${timeSize}px; font-weight:700; font-family:Arial,Helvetica,sans-serif; }
-            .date { fill:white; font-size:${dateSize}px; font-weight:500; font-family:Arial,Helvetica,sans-serif; }
-            .meta { fill:white; font-size:${metaSize}px; opacity:.85; font-family:Arial,Helvetica,sans-serif; }
+            .time { fill:white; font-size:${svgTimeSize}px; font-weight:700; font-family:Arial,Helvetica,sans-serif; }
+            .date { fill:white; font-size:${svgDateSize}px; font-weight:500; font-family:Arial,Helvetica,sans-serif; }
+            .meta { fill:white; font-size:${svgMetaSize}px; opacity:.85; font-family:Arial,Helvetica,sans-serif; }
             </style>
 
-            <rect width="100%" height="350" fill="url(#bg)"/>
+            <rect width="1200" height="350" fill="url(#bg)"/>
 
-            <text x="${xTime}" y="${yTime}" class="time">${time}</text>
-            <rect x="${xRect}" y="30" width="${rectWidth}" height="${rectHeight}" fill="#FFC107"/>
+            <text x="${svgXTime}" y="${svgYTime}" class="time">${time}</text>
 
-            <text x="${xDate}" y="${yDate1}" class="date">${date}</text>
-            <text x="${xDate}" y="${yDate2}" class="date">${day}</text>
+            <rect x="${svgXRect}" y="${svgYRect}" width="${svgRectWidth}" height="${svgRectHeight}" fill="#FFC107"/>
 
-            <text x="40" y="190" class="meta">
+            <text x="${svgXDate}" y="${svgYDate1}" class="date">${date}</text>
+            <text x="${svgXDate}" y="${svgYDate2}" class="date">${day}</text>
+
+            <text x="${svgXMeta}" y="${svgYMeta}" class="meta">
             ${addressLines.map((l, i) =>
-            `<tspan x="40" dy="${i === 0 ? 0 : metaSize + 6}">${l}</tspan>`
+            `<tspan x="${svgXMeta}" dy="${i === 0 ? 0 : svgLineHeight}">${l}</tspan>`
         ).join('')}
             </text>
 
-            <text x="40" y="${200 + addressLines.length * (metaSize + 8)}" class="meta">
+            <text x="${svgXMeta}" y="${svgYMeta + addressLines.length * svgLineHeight + 10}" class="meta">
             ${req.body.lat || ''}, ${req.body.lng || ''}
             </text>
 
-            <text x="40" y="${246 + addressLines.length * (metaSize + 8)}" class="meta">
+            <text x="${svgXMeta}" y="${svgYMeta + addressLines.length * svgLineHeight + 50}" class="meta">
             ${req.body.apps || ''}
             </text>
 
@@ -257,13 +253,17 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
 
         const gravity = req.body.gravity || 'southwest';
 
-        // ✅ WATERMARK SIZE AMAN
-        // const wmHeight = Math.min(320, Math.round(imageMeta.height * 0.35));
-        // const wmWidth = Math.round(imageMeta.width * 0.9);
+        // ✅ wmHeight adaptif berdasarkan orientasi
+        const wmWidth = Math.min(Math.round(imageMeta.width * 0.95), imageMeta.width);
 
-        // ✅ WATERMARK SIZE +20%
-        const wmHeight = Math.min(Math.round(imageMeta.height * 0.1 * 2), imageMeta.height); // 35% x1.2 = 42% tinggi foto
-        const wmWidth = Math.min(Math.round(imageMeta.width * 0.9 * 1.2), imageMeta.width); // 90% x1.2 = 108% → dibatasi max width foto
+        let wmHeightRatio;
+        if (isLandscape) {
+            wmHeightRatio = Math.max(0.15, 0.28 / aspectRatio);
+        } else {
+            wmHeightRatio = 0.28;
+        }
+
+        const wmHeight = Math.min(Math.round(imageMeta.width * wmHeightRatio), imageMeta.height);
 
         const watermarkBuffer = await sharp(Buffer.from(watermarkSVG))
             .resize({
@@ -273,8 +273,6 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
                 background: { r: 0, g: 0, b: 0, alpha: 0 }
             })
             .toBuffer();
-
-        // const watermarkBuffer = Buffer.from(watermarkSVG);
 
         const watermarked = await sharp(req.file.buffer)
             .rotate()
@@ -287,7 +285,6 @@ app.post('/watermark', upload.single('photo'), async (req, res) => {
             .jpeg({ quality: 90 })
             .toBuffer();
 
-        // req.body.max_size in KB, default 500KB
         const maxSizeByte = (req.body.max_size || 500) * 1024;
 
         const finalImage = watermarked.length > maxSizeByte
